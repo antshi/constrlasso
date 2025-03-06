@@ -2,8 +2,8 @@ Package: constrlasso
 Title: Contrained lasso regression and solution path in R as in [Gaines et al. (2018)]
 (http: //hua-zhou.github.io/SparseReg/). as in [Gaines et al. (2018)](http://hua-zhou.github.io/SparseReg/)
 Version: 0.1.0
-Authors@R: 
-    person("Antoniya", "Shivarova", , "an.shivarova@gmail.com", role = c("aut", "cre"))
+Author: Antoniya Shivarova
+Maintainer: Antoniya Shivarova <an.shivarova@gmail.com>
 Description: This package provides functions for fitting the constrained lasso regression and computing the solution path. The constrained lasso regression is a generalization of the lasso regression that allows for linear equality constraints on the coefficients. The solution path is computed using the algorithm proposed by Gaines et al. (2018) <doi:10.1080/10618600.2017.1302882>.
 License: GPL-2
 Encoding: UTF-8
