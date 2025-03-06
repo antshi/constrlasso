@@ -2,4 +2,10 @@
 
 export(constrlasso)
 export(constrlasso_path)
-importFrom(Rdpack,reprompt)
+import(MASS)
+import(ROI)
+import(ROI.plugin.qpoases)
+import(Rdpack)
+import(glmnet)
+import(lpSolve)
+import(stats)

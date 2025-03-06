@@ -65,19 +65,13 @@ subject to \eqn{Aeq \beta = beq} and \eqn{A \beta\le b}.
 }
 
 \examples{
-library(constrlasso)
-library(MASS)
 set.seed(1234)
-n <- 200
-p <- 50
-Xmat <- matrix(, n, p)
-for (i in 1:p) {
-  Xmat[, i] <- rnorm(n, runif(1, -3, 3), runif(1, 1, 2))
-}
-betas <- runif(p, -2, 2)
-nonzeros <- sample(1:p, 20, replace = FALSE)
-yvec <- Xmat[, nonzeros] \%*\% betas[nonzeros] + rnorm(n, 0, 2)
-classoreg_results <- constrlasso(Xmat, yvec, lambda = 0)
+n <- 200 # number of observations
+p <- 150 # number of regressors
+real_p <- 50 # number of true predictors
+Xmat <- matrix(rnorm(n * p), nrow = n, ncol = p)
+yvec <- apply(Xmat[, 1:real_p], 1, sum) + rnorm(n)
+results_reg_no_constr <- constrlasso(Xmat, yvec, lambda = 0)
 
 }
 \references{

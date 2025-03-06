@@ -34,24 +34,17 @@
 #' @return dual_neq inequality duals. The function returns an empty vector for no inequality constraints.
 #'
 #' @examples
-#' library(constrlasso)
-#' library(MASS)
 #' set.seed(1234)
-#' n <- 200
-#' p <- 50
-#' Xmat <- matrix(, n, p)
-#' for (i in 1:p) {
-#'   Xmat[, i] <- rnorm(n, runif(1, -3, 3), runif(1, 1, 2))
-#' }
-#' betas <- runif(p, -2, 2)
-#' nonzeros <- sample(1:p, 20, replace = FALSE)
-#' yvec <- Xmat[, nonzeros] %*% betas[nonzeros] + rnorm(n, 0, 2)
-#' classoreg_results <- constrlasso(Xmat, yvec, lambda = 0)
+#' n <- 200 # number of observations
+#' p <- 150 # number of regressors
+#' real_p <- 50 # number of true predictors
+#' Xmat <- matrix(rnorm(n * p), nrow = n, ncol = p)
+#' yvec <- apply(Xmat[, 1:real_p], 1, sum) + rnorm(n)
+#' results_reg_no_constr <- constrlasso(Xmat, yvec, lambda = 0)
 #'
-#' @importFrom Rdpack reprompt
+#' @import stats MASS lpSolve glmnet ROI ROI.plugin.qpoases Rdpack
 #' @references
 #' \insertAllCited
-#'
 #'
 #' @export constrlasso
 constrlasso <-
@@ -101,14 +94,14 @@ constrlasso <-
         Xwt <- X * as.numeric(sqrt(wt))
         ywt <- as.numeric(sqrt(wt)) * y
 
-        betahat <- matrix(lm(ywt ~ Xwt - 1)$coef, p, 1)
+        betahat <- matrix(stats::lm(ywt ~ Xwt - 1)$coef, p, 1)
         dual_eq <- rep(0, 0)
         dual_neq <- rep(0, 0)
       } else {
         # with penalization
         if (method == "CD") {
           glmnet_res <-
-            glmnet(
+            glmnet::glmnet(
               Xwt,
               ywt,
               alpha = 1,
@@ -137,8 +130,8 @@ constrlasso <-
           f <- rbind(f, -f) + lambda * rbind(penidx, penidx)
 
           # optimizer
-          x <- OP(Q_objective(H, L = t(f)))
-          opt <- ROI_solve(x, solver = "qpoases")
+          x <- ROI::OP(ROI::Q_objective(H, L = t(f)))
+          opt <- ROI::ROI_solve(x, solver = "qpoases")
           opt_sol <- opt$message$primal_solution
 
           # estimators
@@ -174,15 +167,15 @@ constrlasso <-
 
       # optimizer
       x <-
-        OP(
-          Q_objective(H, L = t(f)),
-          L_constraint(
+        ROI::OP(
+          ROI::Q_objective(H, L = t(f)),
+          ROI::L_constraint(
             L = Amatrix,
             dir = c(rep("==", m1), rep("<=", m2)),
             rhs = bvector
           )
         )
-      opt <- ROI_solve(x, solver = "qpoases")
+      opt <- ROI::ROI_solve(x, solver = "qpoases")
       opt_sol <- opt$message$primal_solution
 
       # estimators
@@ -254,22 +247,17 @@ constrlasso <-
 #' @return beta_path  a matrix with estimated regression coefficients for each value of lambda_path
 #' @return df_path a vector with degrees of freedom along the solution path
 #' @return objval_path a vector with values of the objective function for each value of lambda_path
+#'
 #' @examples
-#'
-#' library(constrlasso)
 #' set.seed(1234)
-#' n <- 200
-#' p <- 50
-#' Xmat <- matrix(, n, p)
-#' for (i in 1:p) {
-#'   Xmat[, i] <- rnorm(n, runif(1, -3, 3), runif(1, 1, 2))
-#' }
-#' betas <- runif(p, -2, 2)
-#' nonzeros <- sample(1:p, 20, replace = FALSE)
-#' yvec <- Xmat[, nonzeros] %*% betas[nonzeros] + rnorm(n, 0, 2)
-#' classopath_results <- constrlasso_path(Xmat, yvec)
+#' n <- 200 # number of observations
+#' p <- 150 # number of regressors
+#' real_p <- 50 # number of true predictors
+#' Xmat <- matrix(rnorm(n * p), nrow = n, ncol = p)
+#' yvec <- apply(Xmat[, 1:real_p], 1, sum) + rnorm(n)
+#' results_path <- constrlasso_path(Xmat, yvec)
 #'
-#' @importFrom Rdpack reprompt
+#' @import stats MASS lpSolve glmnet ROI ROI.plugin.qpoases Rdpack
 #' @references
 #' \insertAllCited
 #'
@@ -386,7 +374,7 @@ constrlasso_path <-
       constr_dir <- c(rep("=", m1), rep("<=", m2), rep(">=", 2 * p))
 
       lpsol <-
-        lp(
+        lpSolve::lp(
           direction = "min",
           obj_fun,
           constr_mat,
@@ -417,7 +405,7 @@ constrlasso_path <-
       constr_dir <- c(rep("=", m1), rep("<=", m2), rep(">=", 2 * p))
 
       lpsol <-
-        lp(
+        lpSolve::lp(
           direction = "min",
           obj_fun,
           constr_mat,
@@ -450,7 +438,7 @@ constrlasso_path <-
         t(X) %*% resid - t(Aeq) %*% dualpath_eq[, 1] - t(A) %*% dualpath_ineq[, 1]
       lambda_max <- max(abs(subgrad))
 
-      # Use QP at lambda_max to initialize
+      # use QP at lambda_max to initialize
       constrlasso_sol <-
         constrlasso(
           X,
@@ -539,7 +527,7 @@ constrlasso_path <-
       # try using a regular inverse first, otherwise the Moore-Penrose Inverse
       inv_calc_error <- function(e) {
         dir <-
-          -(ginv(M) %*% rbind(
+          -(MASS::ginv(M) %*% rbind(
             matrix(subgrad[sets_active], n_active, 1),
             matrix(0, m1 + n_ineq_border, 1)
           ))
@@ -579,13 +567,13 @@ constrlasso_path <-
           subgrad[!sets_active] <= (-1 * dir_sign + ceiling_tol) &
           dir_subgrad < -1 * dir_sign)
 
-      ## "Active" coeficients estimated as 0 with potential sign mismatch
-      # Positive subgradient but negative derivative
+      ## "active" coeficients estimated as 0 with potential sign mismatch
+      # positive subgradient but negative derivative
       sign_mismatch_pos_idx <- which((0 - ceiling_tol) <= subgrad[sets_active] &
         subgrad[sets_active] <= (1 + ceiling_tol) &
         dir_sign * dir[1:n_active] <= (0 - ceiling_tol) &
         beta_path[sets_active, k - 1] == 0)
-      # Negative subgradient but positive derivative
+      # negative subgradient but positive derivative
       sign_mismatch_neg_idx <-
         which((-1 - ceiling_tol) <= subgrad[sets_active] &
           subgrad[sets_active] <= (0 + ceiling_tol) &
@@ -595,18 +583,18 @@ constrlasso_path <-
       # reset violation counter (to avoid infinite loops)
       violation_counter <- 0
 
-      ### Outer while loop for checking all conditions together
+      ### outer while loop for checking all conditions together
 
       while (length(inact_slow_neg_idx) != 0 ||
         length(inact_slow_pos_idx) != 0 ||
         length(sign_mismatch_pos_idx) != 0 || length(sign_mismatch_neg_idx) != 0) {
         printer("VIOLATIONS DUE TO SLOW ALGO MOVEMENT OR POS/NEG MISMATCH")
 
-        ## Monitor & fix condition 1 violations
+        ## monitor & fix condition 1 violations
         while (length(inact_slow_neg_idx) != 0) {
           printer("Violation inact_slow_neg_idx")
 
-          # Identify & move problem coefficient
+          # identify & move problem coefficient
 
           inactive_coefs <-
             which(!sets_active) # indices corresponding to inactive coefficients
@@ -620,7 +608,7 @@ constrlasso_path <-
           n_ineq_border <-
             length(which(set_ineq_border)) # determine number of active/binding inequality constraints
 
-          # Recalculate derivative for coefficients & multipliers
+          # recalculate derivative for coefficients & multipliers
 
           M <-
             cbind(
@@ -636,7 +624,7 @@ constrlasso_path <-
           ))
           inv_calc_error <- function(e) {
             dir <-
-              -(ginv(M) %*% rbind(
+              -(MASS::ginv(M) %*% rbind(
                 matrix(subgrad[sets_active], n_active, 1),
                 matrix(0, m1 + n_ineq_border, 1)
               ))
@@ -665,22 +653,22 @@ constrlasso_path <-
 
           # check for violations again
 
-          # Negative subgradient
+          # negative subgradient
           inact_slow_neg_idx <-
             which((1 * dir_sign - ceiling_tol) <= subgrad[!sets_active] &
               subgrad[!sets_active] <= (1 * dir_sign + ceiling_tol) &
               1 * dir_sign < dir_subgrad)
-          # Positive subgradient
+          # positive subgradient
           inact_slow_pos_idx <-
             which((-1 * dir_sign - ceiling_tol) <= subgrad[!sets_active] &
               subgrad[!sets_active] <= (-1 * dir_sign + ceiling_tol) &
               dir_subgrad < -1 * dir_sign)
-          # Positive subgrad but negative derivative
+          # positive subgrad but negative derivative
           sign_mismatch_pos_idx <- which((0 - ceiling_tol) <= subgrad[sets_active] &
             subgrad[sets_active] <= (1 + ceiling_tol) &
             dir_sign * dir[1:n_active] <= (0 - ceiling_tol) &
             beta_path[sets_active, k - 1] == 0)
-          # Negative subgradient but positive derivative
+          # negative subgradient but positive derivative
           sign_mismatch_neg_idx <-
             which((-1 - ceiling_tol) <= subgrad[sets_active] &
               subgrad[sets_active] <= (0 + ceiling_tol) &
@@ -695,12 +683,12 @@ constrlasso_path <-
           }
         }
 
-        ## Monitor & fix subgradient condition 2 violations
+        ## monitor & fix subgradient condition 2 violations
 
         while (length(inact_slow_pos_idx) != 0) {
           printer("violation inact_slow_pos_idx")
 
-          # Identify & move problem coefficient
+          # identify & move problem coefficient
 
           inactive_coefs <-
             which(!sets_active) # indices corresponding to inactive coefficients
@@ -714,7 +702,7 @@ constrlasso_path <-
           n_ineq_border <-
             length(which(set_ineq_border)) # determine number of active/binding inequality constraints
 
-          # Recalculate derivative for coefficients & multipliers
+          # recalculate derivative for coefficients & multipliers
 
           M <-
             cbind(
@@ -733,7 +721,7 @@ constrlasso_path <-
 
           inv_calc_error <- function(e) {
             dir <-
-              -(ginv(M) %*% rbind(
+              -(MASS::ginv(M) %*% rbind(
                 matrix(subgrad[sets_active], n_active, 1),
                 matrix(0, m1 + n_ineq_border, 1)
               ))
@@ -762,17 +750,17 @@ constrlasso_path <-
 
           # check for violations again
 
-          # Positive subgradient
+          # positive subgradient
           inact_slow_pos_idx <-
             which((-1 * dir_sign - ceiling_tol) <= subgrad[!sets_active] &
               subgrad[!sets_active] <= (-1 * dir_sign + ceiling_tol) &
               dir_subgrad < -1 * dir_sign)
-          # Positive subgrad but negative derivative
+          # positive subgrad but negative derivative
           sign_mismatch_pos_idx <- which((0 - ceiling_tol) <= subgrad[sets_active] &
             subgrad[sets_active] <= (1 + ceiling_tol) &
             dir_sign * dir[1:n_active] <= (0 - ceiling_tol) &
             beta_path[sets_active, k - 1] == 0)
-          # Negative subgradient but positive derivative
+          # negative subgradient but positive derivative
           sign_mismatch_neg_idx <-
             which((-1 - ceiling_tol) <= subgrad[sets_active] &
               subgrad[sets_active] <= (0 + ceiling_tol) &
@@ -788,12 +776,12 @@ constrlasso_path <-
           }
         }
 
-        ## Monitor & fix subgradient condition 3 violations
+        ## monitor & fix subgradient condition 3 violations
 
         while (length(sign_mismatch_pos_idx) != 0) {
           printer("violation sign_mismatch_pos_idx")
 
-          # Identify & move problem coefficient
+          # identify & move problem coefficient
 
           active_coefs <-
             which(sets_active) # indices corresponding to inactive coefficients
@@ -808,7 +796,7 @@ constrlasso_path <-
             length(which(set_ineq_border)) # determine number of active/binding inequality constraints
 
 
-          # Recalculate derivative for coefficients & multipliers
+          # recalculate derivative for coefficients & multipliers
 
           M <-
             cbind(H[sets_active, sets_active], t(matrix(Aeq[, sets_active], ncol = n_active)), t(matrix(A[set_ineq_border, sets_active],
@@ -826,7 +814,7 @@ constrlasso_path <-
 
           inv_calc_error <- function(e) {
             dir <-
-              -(ginv(M) %*% rbind(
+              -(MASS::ginv(M) %*% rbind(
                 matrix(subgrad[sets_active], n_active, 1),
                 matrix(0, m1 + n_ineq_border, 1)
               ))
@@ -855,13 +843,13 @@ constrlasso_path <-
 
           # check for violations again
 
-          # Positive subgrad but negative derivative
+          # positive subgrad but negative derivative
           sign_mismatch_pos_idx <- which((0 - ceiling_tol) <= subgrad[sets_active] &
             subgrad[sets_active] <= (1 + ceiling_tol) &
             dir_sign * dir[1:n_active] <= (0 - ceiling_tol) &
             beta_path[sets_active, k - 1] == 0)
 
-          # Negative subgradient but positive derivative
+          # negative subgradient but positive derivative
           sign_mismatch_neg_idx <-
             which((-1 - ceiling_tol) <= subgrad[sets_active] &
               subgrad[sets_active] <= (0 + ceiling_tol) &
@@ -877,7 +865,7 @@ constrlasso_path <-
           }
         }
 
-        ## Monitor & fix subgradient condition 4 violations
+        ## monitor & fix subgradient condition 4 violations
 
         while (length(sign_mismatch_neg_idx) != 0) {
           printer("violation sign_mismatch_neg_idx")
@@ -915,7 +903,7 @@ constrlasso_path <-
 
           inv_calc_error <- function(e) {
             dir <-
-              -(ginv(M) %*% rbind(
+              -(MASS::ginv(M) %*% rbind(
                 matrix(subgrad[sets_active], n_active, 1),
                 matrix(0, m1 + n_ineq_border, 1)
               ))
@@ -944,7 +932,7 @@ constrlasso_path <-
 
           # check for violations again
 
-          # Negative subgradient but positive derivative
+          # negative subgradient but positive derivative
           sign_mismatch_neg_idx <-
             which((-1 - ceiling_tol) <= subgrad[sets_active] &
               subgrad[sets_active] <= (0 + ceiling_tol) &
@@ -961,22 +949,22 @@ constrlasso_path <-
         }
 
         # update violation trackers to see if any issues persist
-        # Negative subgradient
+        # negative subgradient
         inact_slow_neg_idx <-
           which((1 * dir_sign - ceiling_tol) <= subgrad[!sets_active] &
             subgrad[!sets_active] <= (1 * dir_sign + ceiling_tol) &
             1 * dir_sign < dir_subgrad)
-        # Positive subgradient
+        # positive subgradient
         inact_slow_pos_idx <-
           which((-1 * dir_sign - ceiling_tol) <= subgrad[!sets_active] &
             subgrad[!sets_active] <= (-1 * dir_sign + ceiling_tol) &
             dir_subgrad < -1 * dir_sign)
-        # Positive subgrad but negative derivative
+        # positive subgrad but negative derivative
         sign_mismatch_pos_idx <- which((0 - ceiling_tol) <= subgrad[sets_active] &
           subgrad[sets_active] <= (1 + ceiling_tol) &
           dir_sign * dir[1:n_active] <= (0 - ceiling_tol) &
           beta_path[sets_active, k - 1] == 0)
-        # Negative subgradient but positive derivative
+        # negative subgradient but positive derivative
         sign_mismatch_neg_idx <-
           which((-1 - ceiling_tol) <= subgrad[sets_active] &
             subgrad[sets_active] <= (0 + ceiling_tol) &
@@ -999,13 +987,13 @@ constrlasso_path <-
             n_active
         ) %*% dir[1:n_active]
 
-      ### Determine lambda for next event (via delta lambda)
+      ### determine lambda for next event (via delta lambda)
 
       next_lambda_beta <- matrix(Inf, p, 1)
 
-      ## Events based on changes in coefficient status
+      ## events based on changes in coefficient status
 
-      # Active coefficient going inactive
+      # active coefficient going inactive
       next_lambda_beta[sets_active, ] <- -dir_sign * beta_path[sets_active, k - 1] / dir[1:n_active]
 
       # inactive coefficient becoming positive
